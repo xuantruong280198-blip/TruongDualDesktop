@@ -1,6 +1,7 @@
 package com.truong.dualdesktop
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.Presentation
 import android.app.ActivityOptions
 import android.content.Context
@@ -29,6 +30,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     private lateinit var status: TextView
     private lateinit var appPicker: LinearLayout
     private var desktop: DesktopPresentation? = null
+    private var lastAction = "Chưa thử mở ứng dụng nào."
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -144,11 +146,31 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
             .setClassName(info.packageName, info.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
+            val supported = packageManager.hasSystemFeature(
+                android.content.pm.PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS
+            )
+            val allowed = (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager)
+                .isActivityStartAllowedOnDisplay(this, displayId, intent)
+            if (!supported) {
+                lastAction = "KHÔNG HỖ TRỢ: thiết bị không công bố FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS."
+                status.text = lastAction
+                refreshReport()
+                return
+            }
+            if (!allowed) {
+                lastAction = "BỊ CHẶN: Android/HyperOS không cho app này mở trên Display $displayId. Không gửi lệnh mở."
+                status.text = lastAction
+                refreshReport()
+                return
+            }
             val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
             startActivity(intent, options.toBundle())
-            status.text = "Đã yêu cầu mở ${app.loadLabel(packageManager)} trên Display $displayId"
+            lastAction = "ĐÃ GỬI YÊU CẦU: ${app.loadLabel(packageManager)} → Display $displayId. Android vẫn có thể điều hướng lại; cần kiểm tra thực tế trên HDMI."
+            status.text = lastAction
+            refreshReport()
         } catch (e: Exception) {
-            status.text = "HyperOS từ chối mở ứng dụng trên HDMI: ${e.javaClass.simpleName}: ${e.message}"
+            lastAction = "LỖI KHI MỞ: ${e.javaClass.simpleName}: ${e.message}"
+            status.text = lastAction
             refreshReport()
         }
     }
@@ -158,6 +180,9 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         lines += "DEVICE: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
         lines += "ANDROID: ${android.os.Build.VERSION.RELEASE} / SDK ${android.os.Build.VERSION.SDK_INT}"
         lines += "BUILD: ${android.os.Build.DISPLAY}"
+        val secondaryActivities = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)
+        lines += "FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS=$secondaryActivities"
+        lines += "LAST_LAUNCH=$lastAction"
         lines += "TIME: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}"
         lines += ""
         val displays = displayManager.displays
@@ -184,7 +209,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         lines += "Desktop mode: app-owned Presentation + explicit launch-on-display request."
         lines += "Cross-display system cursor routing is not claimed; it requires OS/OEM support."
         report.text = lines.joinToString("\n")
-        status.text = "Sẵn sàng · ${displays.size} màn hình · ${inputManager.inputDeviceIds.size} thiết bị nhập"
+        status.text = if (lastAction == "Chưa thử mở ứng dụng nào.") "Sẵn sàng · ${displays.size} màn hình · ${inputManager.inputDeviceIds.size} thiết bị nhập" else lastAction
     }
 
     override fun onDisplayAdded(displayId: Int) { populateAppPicker(); refreshReport(); if (displayId != 0) openDesktop() }
