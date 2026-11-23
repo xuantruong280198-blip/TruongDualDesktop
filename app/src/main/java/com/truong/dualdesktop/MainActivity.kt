@@ -46,7 +46,6 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         inputManager = getSystemService(Context.INPUT_SERVICE) as InputManager
         displayManager.registerDisplayListener(this, null)
-        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         inputManager.registerInputDeviceListener(this, null)
 
         val root = LinearLayout(this).apply {
@@ -94,6 +93,11 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         }
         root.addView(ScrollView(this).apply { addView(report) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        try {
+            Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+        } catch (e: Throwable) {
+            status.text = "Shizuku init error: ${e.javaClass.simpleName}: ${e.message}"
+        }
         populateAppPicker()
         refreshReport()
     }
