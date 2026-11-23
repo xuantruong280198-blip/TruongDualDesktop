@@ -116,31 +116,16 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     }
 
     private fun runShizukuDiagnostics() {
-        status.text = "Đang kiểm tra quyền ADB và lệnh điều khiển chuột…"
-        Thread {
-            val output = StringBuilder()
-            fun run(command: Array<String>, label: String) {
-                try {
-                    val process = Shizuku.newProcess(command, null, null)
-                    val stdout = process.inputStream.bufferedReader().readText()
-                    val stderr = process.errorStream.bufferedReader().readText()
-                    val exit = process.waitFor()
-                    output.append("\\n--- ").append(label).append(" (exit ").append(exit).append(") ---\\n")
-                    output.append(stdout)
-                    if (stderr.isNotBlank()) output.append("\\nSTDERR: ").append(stderr)
-                } catch (e: Exception) {
-                    output.append("\\n--- ").append(label).append(" ERROR ---\\n").append(e.javaClass.simpleName).append(": ").append(e.message)
-                }
-            }
-            run(arrayOf("sh", "-c", "id; getprop ro.build.version.release; getprop ro.build.fingerprint"), "SHIZUKU ID")
-            run(arrayOf("sh", "-c", "cmd input help"), "INPUT COMMANDS")
-            run(arrayOf("sh", "-c", "dumpsys input | grep -i -E 'pointer display|displayId|mouse' | head -80"), "INPUT ROUTING STATE")
-            val result = output.toString()
-            runOnUiThread {
-                report.text = report.text.toString() + "\\n\\n===== SHIZUKU DIAGNOSTICS =====\\n" + result
-                status.text = if (result.contains("set-pointer-display-id")) "Firmware có lệnh pointer riêng — đã phát hiện, cần kiểm tra cú pháp." else "Shizuku hoạt động. Đã kiểm tra lệnh hệ thống; chưa thấy lệnh chuyển con trỏ công khai."
-            }
-        }.start()
+        val connected = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
+        val granted = try {
+            Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } catch (_: Throwable) { false }
+        status.text = when {
+            !connected -> "Shizuku chưa kết nối."
+            !granted -> "Shizuku chưa được cấp quyền."
+            else -> "Shizuku đã kết nối và được cấp quyền. Bản này chỉ kiểm tra trạng thái; không gọi API shell không được hỗ trợ."
+        }
+        report.text = report.text.toString() + "\n\n===== SHIZUKU =====\nconnected=$connected\npermissionGranted=$granted\n"
     }
 
     private fun populateAppPicker() {
