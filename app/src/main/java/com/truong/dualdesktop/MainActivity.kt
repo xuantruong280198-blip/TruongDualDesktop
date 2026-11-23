@@ -98,7 +98,13 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         apps.forEach { app ->
             val label = app.loadLabel(packageManager).toString()
             appPicker.addView(Button(this).apply {
-                text = "Mở $label trên HDMI"
+                text = "  $label"
+                textSize = 15f
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                val appIcon = app.loadIcon(packageManager)
+                setCompoundDrawablesWithIntrinsicBounds(appIcon, null, null, null)
+                compoundDrawablePadding = 18
+                contentDescription = "Chọn $label để mở trên HDMI"
                 setOnClickListener {
                     val target = secondaryDisplay()
                     if (target == null) {
@@ -107,7 +113,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
                         launchOnDisplay(app, target.displayId)
                     }
                 }
-            }, LinearLayout.LayoutParams(-1, 48).apply { bottomMargin = 4 })
+            }, LinearLayout.LayoutParams(-1, 58).apply { bottomMargin = 6 })
         }
     }
 
