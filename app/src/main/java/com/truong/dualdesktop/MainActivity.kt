@@ -19,7 +19,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import rikka.shizuku.Shizuku
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,14 +31,6 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     private lateinit var appPicker: LinearLayout
     private var desktop: DesktopPresentation? = null
     private var lastAction = "Chưa thử mở ứng dụng nào."
-    private val shizukuRequestCode = 7301
-    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-        if (requestCode == shizukuRequestCode && grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            runShizukuDiagnostics()
-        } else if (requestCode == shizukuRequestCode) {
-            status.text = "Shizuku chưa được cấp quyền cho TruongDualDesktop."
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,39 +84,8 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         }
         root.addView(ScrollView(this).apply { addView(report) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
-        try {
-            Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
-        } catch (e: Throwable) {
-            status.text = "Shizuku init error: ${e.javaClass.simpleName}: ${e.message}"
-        }
         populateAppPicker()
         refreshReport()
-    }
-
-    private fun checkShizukuAndRun() {
-        if (!Shizuku.pingBinder()) {
-            status.text = "Không kết nối được Shizuku. Hãy mở Shizuku và kiểm tra trạng thái Đang chạy."
-            return
-        }
-        if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            Shizuku.requestPermission(shizukuRequestCode)
-            status.text = "Đang yêu cầu cấp quyền Shizuku…"
-            return
-        }
-        runShizukuDiagnostics()
-    }
-
-    private fun runShizukuDiagnostics() {
-        val connected = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
-        val granted = try {
-            Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
-        } catch (_: Throwable) { false }
-        status.text = when {
-            !connected -> "Shizuku chưa kết nối."
-            !granted -> "Shizuku chưa được cấp quyền."
-            else -> "Shizuku đã kết nối và được cấp quyền. Bản này chỉ kiểm tra trạng thái; không gọi API shell không được hỗ trợ."
-        }
-        report.text = report.text.toString() + "\n\n===== SHIZUKU =====\nconnected=$connected\npermissionGranted=$granted\n"
     }
 
     private fun populateAppPicker() {
@@ -260,7 +220,6 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     override fun onInputDeviceChanged(deviceId: Int) = refreshReport()
 
     override fun onDestroy() {
-        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
         displayManager.unregisterDisplayListener(this)
         inputManager.unregisterInputDeviceListener(this)
         desktop?.dismiss()
