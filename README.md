@@ -1,20 +1,17 @@
-# Truong Dual Desktop — Diagnostic 0.1
+# Truong Dual Desktop — 0.2 Beta
 
-Android diagnostic prototype for Xiaomi Pad 6 (HyperOS 2.0.16.0.UMZMIXM, Android 14, 6 GB RAM, non-root).
+Target device: Xiaomi Pad 6 (23043RP34G), HyperOS 2 / Android 14, non-root.
 
-## Scope
-- Enumerates displays and reports display IDs, types, flags, dimensions, refresh rate and presentation capability.
-- Enumerates mouse, keyboard, touch and stylus input devices.
-- Listens for display and input-device add/remove/change events.
-- Attempts an app-owned Presentation on a secondary display that advertises FLAG_PRESENTATION.
+## Current implementation
+- Detects external presentation displays.
+- Shows an app-owned desktop launcher on HDMI.
+- Enumerates launcher-visible Android apps.
+- Requests launch of a selected app on the HDMI display using Android's public ActivityOptions.setLaunchDisplayId API.
+- Reports display and input-device information.
 
-## Important limitation
-This diagnostic app does not change Android's system display topology, turn mirroring into OS-level extended desktop, or move the system mouse pointer between displays. Those behaviors are controlled by Android/OEM system services and must be proven possible on the target HyperOS build before promising a no-root implementation.
+## Important limits
+This build tests whether the target HyperOS firmware permits third-party activities to launch on the presentation display. Some apps may reject secondary-display launch or be redirected to the built-in display. The app does not claim system-wide extended desktop or universal mouse crossing: Android 14 exposes no ordinary third-party API to rewrite system cursor topology. Mouse crossing outside the app requires OS/OEM support or privileged/system integration.
 
 ## Build
-JDK 17 + Gradle 8.9:
-`gradle --no-daemon assembleDebug`
-
-APK: `app/build/outputs/apk/debug/app-debug.apk`
-
-The GitHub Actions workflow builds on pushes to main and manual dispatch. Download artifact `TruongDualDesktop-diagnostic-debug` from Actions.
+JDK 17 + Gradle 8.9: `gradle --no-daemon assembleDebug`.
+Artifact: `app/build/outputs/apk/debug/app-debug.apk`.
