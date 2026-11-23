@@ -2,13 +2,17 @@ package com.truong.dualdesktop
 
 import android.app.Activity
 import android.app.Presentation
+import android.app.ActivityOptions
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ResolveInfo
 import android.hardware.display.DisplayManager
 import android.hardware.input.InputManager
 import android.os.Bundle
-import android.util.DisplayMetrics
 import android.view.Display
+import android.view.Gravity
 import android.view.InputDevice
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -21,9 +25,9 @@ import java.util.Locale
 class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.InputDeviceListener {
     private lateinit var displayManager: DisplayManager
     private lateinit var inputManager: InputManager
-    private lateinit var output: TextView
+    private lateinit var report: TextView
     private lateinit var status: TextView
-    private var presentation: ProbePresentation? = null
+    private var desktop: DesktopPresentation? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,39 +38,86 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 28, 24, 24)
+            setPadding(22, 24, 22, 18)
             setBackgroundColor(0xFF101820.toInt())
         }
         status = TextView(this).apply {
-            text = "TRUONG DUAL DESKTOP · DIAGNOSTIC 0.1"
-            textSize = 18f
+            text = "TRUONG DUAL DESKTOP · 0.2 BETA"
+            textSize = 20f
             setTextColor(0xFF65D6AD.toInt())
         }
-        val refresh = Button(this).apply {
-            text = "Làm mới thông tin màn hình / chuột"
+        root.addView(status)
+        root.addView(TextView(this).apply {
+            text = "Desktop kết hợp ứng dụng Android"
+            textSize = 15f
+            setTextColor(0xFFE6EDF3.toInt())
+            setPadding(0, 8, 0, 14)
+        })
+        root.addView(Button(this).apply {
+            text = "Mở / làm mới Desktop trên HDMI"
+            setOnClickListener { openDesktop() }
+        })
+        root.addView(Button(this).apply {
+            text = "Làm mới báo cáo màn hình và chuột"
             setOnClickListener { refreshReport() }
-        }
-        val test = Button(this).apply {
-            text = "Mở thử giao diện riêng trên màn hình ngoài"
-            setOnClickListener { openPresentation() }
-        }
-        val close = Button(this).apply {
-            text = "Đóng giao diện thử"
-            setOnClickListener { presentation?.dismiss(); presentation = null }
-        }
-        output = TextView(this).apply {
-            textSize = 13f
+        })
+        root.addView(Button(this).apply {
+            text = "Đóng Desktop HDMI"
+            setOnClickListener { desktop?.dismiss(); desktop = null; refreshReport() }
+        })
+        report = TextView(this).apply {
+            textSize = 12f
             typeface = android.graphics.Typeface.MONOSPACE
             setTextColor(0xFFE6EDF3.toInt())
             setTextIsSelectable(true)
         }
-        root.addView(status)
-        root.addView(refresh)
-        root.addView(test)
-        root.addView(close)
-        root.addView(ScrollView(this).apply { addView(output) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(ScrollView(this).apply { addView(report) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         refreshReport()
+    }
+
+    private fun secondaryDisplay(): Display? = displayManager.displays.firstOrNull {
+        it.displayId != Display.DEFAULT_DISPLAY && it.flags and Display.FLAG_PRESENTATION != 0
+    }
+
+    private fun openDesktop() {
+        val target = secondaryDisplay()
+        if (target == null) {
+            status.text = "Chưa tìm thấy màn hình HDMI Presentation."
+            return
+        }
+        try {
+            desktop?.dismiss()
+            desktop = DesktopPresentation(this, target, queryLaunchableApps()) { app ->
+                launchOnDisplay(app, target.displayId)
+            }.also { it.show() }
+            status.text = "Desktop đã mở trên HDMI · Display ${target.displayId}"
+            refreshReport()
+        } catch (e: Exception) {
+            status.text = "Không mở được Desktop: ${e.javaClass.simpleName}: ${e.message}"
+        }
+    }
+
+    private fun queryLaunchableApps(): List<ResolveInfo> {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return packageManager.queryIntentActivities(intent, 0)
+            .filter { it.activityInfo.packageName != packageName }
+            .sortedBy { it.loadLabel(packageManager).toString().lowercase(Locale.getDefault()) }
+    }
+
+    private fun launchOnDisplay(app: ResolveInfo, displayId: Int) {
+        val info = app.activityInfo
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            .setClassName(info.packageName, info.name)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
+            startActivity(intent, options.toBundle())
+            status.text = "Đã yêu cầu mở ${app.loadLabel(packageManager)} trên Display $displayId"
+        } catch (e: Exception) {
+            status.text = "HyperOS từ chối mở ứng dụng trên HDMI: ${e.javaClass.simpleName}: ${e.message}"
+            refreshReport()
+        }
     }
 
     private fun refreshReport() {
@@ -79,17 +130,10 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         val displays = displayManager.displays
         lines += "DISPLAYS (${displays.size})"
         displays.forEach { d ->
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            d.getRealMetrics(metrics)
-            lines += "--- Display id=${d.displayId} ---"
-            lines += "name=${d.name}"
-            lines += "state=${stateName(d.state)}"
-            lines += "flags=0x${d.flags.toString(16)} (${flagNames(d.flags)})"
-            lines += "size=${metrics.widthPixels}x${metrics.heightPixels} density=${metrics.densityDpi}dpi"
-            lines += "rotation=${d.rotation} refresh=${d.refreshRate}Hz"
-            lines += "mode=${d.mode.physicalWidth}x${d.mode.physicalHeight}@${d.mode.refreshRate}Hz"
-            lines += "isPresentation=${d.flags and Display.FLAG_PRESENTATION != 0}"
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION") d.getRealMetrics(metrics)
+            lines += "id=${d.displayId} name=${d.name} state=${d.state}"
+            lines += "flags=0x${d.flags.toString(16)} size=${metrics.widthPixels}x${metrics.heightPixels} presentation=${d.flags and Display.FLAG_PRESENTATION != 0}"
         }
         lines += ""
         lines += "INPUT DEVICES (${inputManager.inputDeviceIds.size})"
@@ -99,38 +143,20 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
                 if (dev.supportsSource(InputDevice.SOURCE_MOUSE)) add("MOUSE")
                 if (dev.supportsSource(InputDevice.SOURCE_KEYBOARD)) add("KEYBOARD")
                 if (dev.supportsSource(InputDevice.SOURCE_TOUCHSCREEN)) add("TOUCHSCREEN")
-                if (dev.supportsSource(InputDevice.SOURCE_TOUCHPAD)) add("TOUCHPAD")
                 if (dev.supportsSource(InputDevice.SOURCE_STYLUS)) add("STYLUS")
             }
             lines += "id=$id name=${dev.name} sources=${sources.joinToString()} virtual=${dev.isVirtual}"
         }
         lines += ""
-        lines += "NOTE: App API can inspect displays and show app-owned Presentation UI."
-        lines += "It cannot by itself change system-wide display topology or move the OS mouse cursor across displays."
-        output.text = lines.joinToString("\n")
-        status.text = "DIAGNOSTIC · ${displays.size} display(s) · ${inputManager.inputDeviceIds.size} input device(s)"
+        lines += "Desktop mode: app-owned Presentation + explicit launch-on-display request."
+        lines += "Cross-display system cursor routing is not claimed; it requires OS/OEM support."
+        report.text = lines.joinToString("\n")
+        status.text = "Sẵn sàng · ${displays.size} màn hình · ${inputManager.inputDeviceIds.size} thiết bị nhập"
     }
 
-    private fun openPresentation() {
-        val target = displayManager.displays.firstOrNull {
-            it.displayId != Display.DEFAULT_DISPLAY && it.flags and Display.FLAG_PRESENTATION != 0
-        }
-        if (target == null) {
-            status.text = "Không tìm thấy Presentation display phụ. Xem báo cáo bên dưới."
-            return
-        }
-        try {
-            presentation?.dismiss()
-            presentation = ProbePresentation(this, target).also { it.show() }
-            status.text = "Đã mở giao diện thử trên display ${target.displayId}"
-        } catch (e: Exception) {
-            status.text = "Không mở được Presentation: ${e.javaClass.simpleName}: ${e.message}"
-        }
-    }
-
-    override fun onDisplayAdded(displayId: Int) = refreshReport()
-    override fun onDisplayRemoved(displayId: Int) { presentation?.dismiss(); presentation = null; refreshReport() }
-    override fun onDisplayChanged(displayId: Int) = refreshReport()
+    override fun onDisplayAdded(displayId: Int) { refreshReport(); if (displayId != 0) openDesktop() }
+    override fun onDisplayRemoved(displayId: Int) { desktop?.dismiss(); desktop = null; refreshReport() }
+    override fun onDisplayChanged(displayId: Int) { refreshReport() }
     override fun onInputDeviceAdded(deviceId: Int) = refreshReport()
     override fun onInputDeviceRemoved(deviceId: Int) = refreshReport()
     override fun onInputDeviceChanged(deviceId: Int) = refreshReport()
@@ -138,37 +164,53 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     override fun onDestroy() {
         displayManager.unregisterDisplayListener(this)
         inputManager.unregisterInputDeviceListener(this)
-        presentation?.dismiss()
+        desktop?.dismiss()
         super.onDestroy()
     }
-
-    private fun stateName(s: Int) = when (s) {
-        Display.STATE_ON -> "ON"; Display.STATE_OFF -> "OFF"; Display.STATE_DOZE -> "DOZE"
-        Display.STATE_DOZE_SUSPEND -> "DOZE_SUSPEND"; Display.STATE_UNKNOWN -> "UNKNOWN"; else -> "$s"
-    }
-    private fun flagNames(f: Int) = buildList {
-        if (f and Display.FLAG_PRESENTATION != 0) add("PRESENTATION")
-        if (f and Display.FLAG_SECURE != 0) add("SECURE")
-        if (f and Display.FLAG_PRIVATE != 0) add("PRIVATE")
-    }.joinToString("|").ifEmpty { "none" }
 }
 
-private class ProbePresentation(context: Context, display: Display) : Presentation(context, display) {
+private class DesktopPresentation(
+    context: Context,
+    display: Display,
+    private val apps: List<ResolveInfo>,
+    private val onLaunch: (ResolveInfo) -> Unit
+) : Presentation(context, display) {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val panel = LinearLayout(context).apply {
+        val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(32, 32, 32, 32)
-            setBackgroundColor(0xFF17232E.toInt())
+            setPadding(28, 22, 28, 18)
+            setBackgroundColor(0xFF101820.toInt())
         }
-        panel.addView(TextView(context).apply {
-            text = "TRUONG DUAL DESKTOP\n\nEXTERNAL DISPLAY TEST\n\nĐây là giao diện riêng do app tạo ra.\nKhông phải màn hình mirror."
-            textSize = 24f
-            gravity = android.view.Gravity.CENTER
-            setTextColor(0xFFFFFFFF.toInt())
+        root.addView(TextView(context).apply {
+            text = "TRUONG DESKTOP"
+            textSize = 26f
+            setTextColor(0xFF65D6AD.toInt())
         })
-        setContentView(panel)
+        root.addView(TextView(context).apply {
+            text = "ỨNG DỤNG ANDROID · ${apps.size} ứng dụng"
+            textSize = 14f
+            setTextColor(0xFFB8C7D9.toInt())
+            setPadding(0, 4, 0, 16)
+        })
+        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        apps.forEach { app ->
+            val label = app.loadLabel(context.packageManager).toString()
+            list.addView(Button(context).apply {
+                text = label
+                textSize = 16f
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                setOnClickListener { onLaunch(app) }
+            }, LinearLayout.LayoutParams(-1, 54).apply { bottomMargin = 5 })
+        }
+        root.addView(ScrollView(context).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(TextView(context).apply {
+            text = "Chọn ứng dụng để yêu cầu Android mở trên màn hình HDMI."
+            textSize = 12f
+            setTextColor(0xFF8FA3B8.toInt())
+            setPadding(0, 12, 0, 0)
+        })
+        setContentView(root)
         window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
     }
 }
