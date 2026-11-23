@@ -84,7 +84,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
             d.getRealMetrics(metrics)
             lines += "--- Display id=${d.displayId} ---"
             lines += "name=${d.name}"
-            lines += "type=${typeName(d)} state=${stateName(d.state)}"
+            lines += "state=${stateName(d.state)}"
             lines += "flags=0x${d.flags.toString(16)} (${flagNames(d.flags)})"
             lines += "size=${metrics.widthPixels}x${metrics.heightPixels} density=${metrics.densityDpi}dpi"
             lines += "rotation=${d.rotation} refresh=${d.refreshRate}Hz"
@@ -142,25 +142,14 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         super.onDestroy()
     }
 
-    private fun typeName(d: Display) = when (d.type) {
-        Display.TYPE_BUILT_IN -> "BUILT_IN"
-        Display.TYPE_HDMI -> "HDMI"
-        Display.TYPE_WIFI -> "WIFI"
-        Display.TYPE_OVERLAY -> "OVERLAY"
-        Display.TYPE_VIRTUAL -> "VIRTUAL"
-        else -> "OTHER(${d.type})"
-    }
     private fun stateName(s: Int) = when (s) {
         Display.STATE_ON -> "ON"; Display.STATE_OFF -> "OFF"; Display.STATE_DOZE -> "DOZE"
         Display.STATE_DOZE_SUSPEND -> "DOZE_SUSPEND"; Display.STATE_UNKNOWN -> "UNKNOWN"; else -> "$s"
     }
     private fun flagNames(f: Int) = buildList {
-        if (f and Display.FLAG_DEFAULT_DISPLAY != 0) add("DEFAULT")
         if (f and Display.FLAG_PRESENTATION != 0) add("PRESENTATION")
         if (f and Display.FLAG_SECURE != 0) add("SECURE")
         if (f and Display.FLAG_PRIVATE != 0) add("PRIVATE")
-        if (f and Display.FLAG_OWN_CONTENT_ONLY != 0) add("OWN_CONTENT_ONLY")
-        if (f and Display.FLAG_AUTO_MIRROR != 0) add("AUTO_MIRROR")
     }.joinToString("|").ifEmpty { "none" }
 }
 
