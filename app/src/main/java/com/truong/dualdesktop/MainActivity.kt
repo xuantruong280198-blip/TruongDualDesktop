@@ -19,6 +19,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import rikka.shizuku.Shizuku
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,12 +32,21 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     private lateinit var appPicker: LinearLayout
     private var desktop: DesktopPresentation? = null
     private var lastAction = "Chưa thử mở ứng dụng nào."
+    private val shizukuRequestCode = 7301
+    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == shizukuRequestCode && grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            runShizukuDiagnostics()
+        } else if (requestCode == shizukuRequestCode) {
+            status.text = "Shizuku chưa được cấp quyền cho TruongDualDesktop."
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         inputManager = getSystemService(Context.INPUT_SERVICE) as InputManager
         displayManager.registerDisplayListener(this, null)
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         inputManager.registerInputDeviceListener(this, null)
 
         val root = LinearLayout(this).apply {
@@ -86,6 +96,47 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         setContentView(root)
         populateAppPicker()
         refreshReport()
+    }
+
+    private fun checkShizukuAndRun() {
+        if (!Shizuku.pingBinder()) {
+            status.text = "Không kết nối được Shizuku. Hãy mở Shizuku và kiểm tra trạng thái Đang chạy."
+            return
+        }
+        if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Shizuku.requestPermission(shizukuRequestCode)
+            status.text = "Đang yêu cầu cấp quyền Shizuku…"
+            return
+        }
+        runShizukuDiagnostics()
+    }
+
+    private fun runShizukuDiagnostics() {
+        status.text = "Đang kiểm tra quyền ADB và lệnh điều khiển chuột…"
+        Thread {
+            val output = StringBuilder()
+            fun run(command: Array<String>, label: String) {
+                try {
+                    val process = Shizuku.newProcess(command, null, null)
+                    val stdout = process.inputStream.bufferedReader().readText()
+                    val stderr = process.errorStream.bufferedReader().readText()
+                    val exit = process.waitFor()
+                    output.append("\\n--- ").append(label).append(" (exit ").append(exit).append(") ---\\n")
+                    output.append(stdout)
+                    if (stderr.isNotBlank()) output.append("\\nSTDERR: ").append(stderr)
+                } catch (e: Exception) {
+                    output.append("\\n--- ").append(label).append(" ERROR ---\\n").append(e.javaClass.simpleName).append(": ").append(e.message)
+                }
+            }
+            run(arrayOf("sh", "-c", "id; getprop ro.build.version.release; getprop ro.build.fingerprint"), "SHIZUKU ID")
+            run(arrayOf("sh", "-c", "cmd input help"), "INPUT COMMANDS")
+            run(arrayOf("sh", "-c", "dumpsys input | grep -i -E 'pointer display|displayId|mouse' | head -80"), "INPUT ROUTING STATE")
+            val result = output.toString()
+            runOnUiThread {
+                report.text = report.text.toString() + "\\n\\n===== SHIZUKU DIAGNOSTICS =====\\n" + result
+                status.text = if (result.contains("set-pointer-display-id")) "Firmware có lệnh pointer riêng — đã phát hiện, cần kiểm tra cú pháp." else "Shizuku hoạt động. Đã kiểm tra lệnh hệ thống; chưa thấy lệnh chuyển con trỏ công khai."
+            }
+        }.start()
     }
 
     private fun populateAppPicker() {
@@ -220,6 +271,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     override fun onInputDeviceChanged(deviceId: Int) = refreshReport()
 
     override fun onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
         displayManager.unregisterDisplayListener(this)
         inputManager.unregisterInputDeviceListener(this)
         desktop?.dismiss()
