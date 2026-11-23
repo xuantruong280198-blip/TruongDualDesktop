@@ -27,6 +27,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
     private lateinit var inputManager: InputManager
     private lateinit var report: TextView
     private lateinit var status: TextView
+    private lateinit var appPicker: LinearLayout
     private var desktop: DesktopPresentation? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +66,14 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
             text = "Đóng Desktop HDMI"
             setOnClickListener { desktop?.dismiss(); desktop = null; refreshReport() }
         })
+        root.addView(TextView(this).apply {
+            text = "CHỌN ỨNG DỤNG TỪ MÀN HÌNH MÁY TÍNH BẢNG"
+            textSize = 14f
+            setTextColor(0xFF65D6AD.toInt())
+            setPadding(0, 14, 0, 6)
+        })
+        appPicker = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(ScrollView(this).apply { addView(appPicker) }, LinearLayout.LayoutParams(-1, 220))
         report = TextView(this).apply {
             textSize = 12f
             typeface = android.graphics.Typeface.MONOSPACE
@@ -73,7 +82,31 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         }
         root.addView(ScrollView(this).apply { addView(report) }, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        populateAppPicker()
         refreshReport()
+    }
+
+    private fun populateAppPicker() {
+        appPicker.removeAllViews()
+        val apps = queryLaunchableApps()
+        if (apps.isEmpty()) {
+            appPicker.addView(TextView(this).apply { text = "Không tìm thấy ứng dụng."; setTextColor(0xFFE6EDF3.toInt()) })
+            return
+        }
+        apps.forEach { app ->
+            val label = app.loadLabel(packageManager).toString()
+            appPicker.addView(Button(this).apply {
+                text = "Mở $label trên HDMI"
+                setOnClickListener {
+                    val target = secondaryDisplay()
+                    if (target == null) {
+                        status.text = "Chưa kết nối màn hình HDMI."
+                    } else {
+                        launchOnDisplay(app, target.displayId)
+                    }
+                }
+            }, LinearLayout.LayoutParams(-1, 48).apply { bottomMargin = 4 })
+        }
     }
 
     private fun secondaryDisplay(): Display? = displayManager.displays.firstOrNull {
@@ -154,7 +187,7 @@ class MainActivity : Activity(), DisplayManager.DisplayListener, InputManager.In
         status.text = "Sẵn sàng · ${displays.size} màn hình · ${inputManager.inputDeviceIds.size} thiết bị nhập"
     }
 
-    override fun onDisplayAdded(displayId: Int) { refreshReport(); if (displayId != 0) openDesktop() }
+    override fun onDisplayAdded(displayId: Int) { populateAppPicker(); refreshReport(); if (displayId != 0) openDesktop() }
     override fun onDisplayRemoved(displayId: Int) { desktop?.dismiss(); desktop = null; refreshReport() }
     override fun onDisplayChanged(displayId: Int) { refreshReport() }
     override fun onInputDeviceAdded(deviceId: Int) = refreshReport()
